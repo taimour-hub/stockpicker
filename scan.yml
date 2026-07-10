@@ -1,9 +1,9 @@
-name: Weekly Stock Scan
+name: Monthly Stock Scan
 
 on:
-  # Run every Sunday at 06:00 UTC (markets closed, fresh weekly data)
+  # Run at 06:00 UTC on the 1st of every month
   schedule:
-    - cron: "0 6 * * 0"
+    - cron: "0 6 1 * *"
 
   # Allow manual trigger from the GitHub Actions tab
   workflow_dispatch:
@@ -11,32 +11,27 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 60       # yfinance scan can be slow; allow up to 1 hour
+    timeout-minutes: 60
 
     permissions:
-      contents: write         # needed to commit data.json back to the repo
+      contents: write
 
     steps:
-      # ── 1. Check out the repository ────────────────────────────────────────
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python ───────────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # ── 3. Install dependencies ────────────────────────────────────────────
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install yfinance pandas requests lxml html5lib beautifulsoup4
 
-      # ── 4. Run the scan ────────────────────────────────────────────────────
       - name: Run stock screener
         env:
-          # Override default criteria here if you want, or leave as defaults
           MAX_PE: "20"
           MAX_PB: "5"
           MIN_CURRENT_RATIO: "1"
@@ -44,12 +39,21 @@ jobs:
           OUTPUT_FILE: "data.json"
         run: python scan.py
 
-      # ── 5. Commit updated data.json back to the repo ───────────────────────
       - name: Commit data.json
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json
-          # Only commit if data.json actually changed
           git diff --staged --quiet || git commit -m "chore: update stock data [$(date -u +'%Y-%m-%d')]"
+          git push
+
+      # This dummy commit keeps the repo "active" so GitHub doesn't
+      # disable the scheduled workflow due to inactivity
+      - name: Keep repo active
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Last run: $(date -u)" > .last_run
+          git add .last_run
+          git commit -m "chore: keep repo active [$(date -u +'%Y-%m-%d')]"
           git push
