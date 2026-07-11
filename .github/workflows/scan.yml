@@ -1,0 +1,59 @@
+name: Monthly Stock Scan
+
+on:
+  # Run at 06:00 UTC on the 1st of every month
+  schedule:
+    - cron: "0 6 1 * *"
+
+  # Allow manual trigger from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install yfinance pandas requests lxml html5lib beautifulsoup4
+
+      - name: Run stock screener
+        env:
+          MAX_PE: "20"
+          MAX_PB: "5"
+          MIN_CURRENT_RATIO: "1"
+          MIN_ROE_5Y: "10"
+          OUTPUT_FILE: "data.json"
+        run: python scan.py
+
+      - name: Commit data.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git diff --staged --quiet || git commit -m "chore: update stock data [$(date -u +'%Y-%m-%d')]"
+          git push
+
+      # This dummy commit keeps the repo "active" so GitHub doesn't
+      # disable the scheduled workflow due to inactivity
+      - name: Keep repo active
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Last run: $(date -u)" > .last_run
+          git add .last_run
+          git commit -m "chore: keep repo active [$(date -u +'%Y-%m-%d')]"
+          git push
